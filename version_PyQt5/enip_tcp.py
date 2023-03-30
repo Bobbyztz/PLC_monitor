@@ -1,24 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-# Copyright (c) 2015 Nicolas Iooss, SUTD
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
 """Ethernet/IP over TCP scapy dissector"""
 import struct
 
@@ -27,15 +6,19 @@ from scapy import all as scapy_all
 import utils
 
 class ENIP_ConnectionAddress(scapy_all.Packet):
+    """the connection address item in common packet format"""
+    """2-6.2.2 Connected Address Item"""
     name = "ENIP_ConnectionAddress Item"
     fields_desc = [scapy_all.LEIntField("connection_id", 0)]
 
 class ENIP_ConnectionData(scapy_all.Packet):
+    """the connection data item in common packet format"""
+    """2-6 Common Packet Format"""
     name = "ENIP_ConnectionData Item"
     fields_desc = [scapy_all.LEShortField("sequence", 0)]
 
-
 class ENIP_SendUnitData_Item(scapy_all.Packet):
+    """Table 2-4.15 SendUnitData Command"""
     name = "ENIP_SendUnitData_Item"
     fields_desc = [
         scapy_all.LEShortEnumField("type_id", 0, {
@@ -51,6 +34,7 @@ class ENIP_SendUnitData_Item(scapy_all.Packet):
     def extract_padding(self, p):
         return p[:self.length], p[self.length:]
 
+    #way to build a new packet
     def post_build(self, p, pay):
         if self.length is None and pay:
             l = len(pay)
@@ -60,6 +44,7 @@ class ENIP_SendUnitData_Item(scapy_all.Packet):
 
 class ENIP_SendUnitData(scapy_all.Packet):
     """Data in ENIP header specific to the specified command"""
+    """Table 2-4.15 SendUnitData Command"""
     name = "ENIP_SendUnitData"
     fields_desc = [
         scapy_all.LEIntField("interface_handle", 0),
@@ -72,6 +57,8 @@ class ENIP_SendUnitData(scapy_all.Packet):
 
 class ENIP_SendRRData(scapy_all.Packet):
     name = "ENIP_SendRRData"
+    """Table 2-4.13 SendRRData Request"""
+    """Table 2-4.14 SendRRData Reply"""
     fields_desc = ENIP_SendUnitData.fields_desc
 
 
@@ -86,6 +73,8 @@ class ENIP_RegisterSession(scapy_all.Packet):
 class ENIP_TCP(scapy_all.Packet):
     """Ethernet/IP packet over TCP"""
     name = "ENIP_TCP"
+
+    # Table 2-3.2 Encapsulation Commands
     fields_desc = [
         scapy_all.LEShortEnumField("command_id", None, {
             0x0004: "ListServices",
@@ -96,6 +85,8 @@ class ENIP_TCP(scapy_all.Packet):
             0x006f: "SendRRData",  # Send Request/Reply data
             0x0070: "SendUnitData",
         }),
+
+        # 2-3.1 Encapsulation Packet Structure with the default setting
         scapy_all.LEShortField("length", None),
         scapy_all.LEIntField("session", 0),
         scapy_all.LEIntEnumField("status", 0, {0: "success"}),
@@ -106,16 +97,17 @@ class ENIP_TCP(scapy_all.Packet):
     def extract_padding(self, p):
         return p[:self.length], p[self.length:]
 
+    # way to build a ENIP_TCP packet
     def post_build(self, p, pay):
         if self.length is None and pay:
             l = len(pay)
             p = p[:2] + struct.pack("<H", l) + p[4:]
         return p + pay
 
-scapy_all.bind_layers(scapy_all.TCP, ENIP_TCP, dport=44818)
-scapy_all.bind_layers(scapy_all.TCP, ENIP_TCP, sport=44818)
-scapy_all.bind_layers(ENIP_TCP, ENIP_RegisterSession, command_id=0x0065)
-scapy_all.bind_layers(ENIP_TCP, ENIP_SendRRData, command_id=0x006f)
-scapy_all.bind_layers(ENIP_TCP, ENIP_SendUnitData, command_id=0x0070)
-scapy_all.bind_layers(ENIP_SendUnitData_Item, ENIP_ConnectionAddress, type_id=0x00a1)
-scapy_all.bind_layers(ENIP_SendUnitData_Item, ENIP_ConnectionData, type_id=0x00b1)
+scapy_all.bind_layers(scapy_all.TCP, ENIP_TCP, dport=44818) # pdf, 2-3.1 Encapsulation Packet Structure
+scapy_all.bind_layers(scapy_all.TCP, ENIP_TCP, sport=44818) # pdf, 2-3.1 Encapsulation Packet Structure
+scapy_all.bind_layers(ENIP_TCP, ENIP_RegisterSession, command_id=0x0065) # pdf, 2-3.2 Command Field, RegisterSession
+scapy_all.bind_layers(ENIP_TCP, ENIP_SendRRData, command_id=0x006f) # pdf, 2-3.2 Command Field, SendRRData
+scapy_all.bind_layers(ENIP_TCP, ENIP_SendUnitData, command_id=0x0070) #pdf, 2-3.2 Command Field, SendUnitData
+scapy_all.bind_layers(ENIP_SendUnitData_Item, ENIP_ConnectionAddress, type_id=0x00a1) #Table 2-6.3 Item ID Numbers,address, Connection-based (used for connected messages)
+scapy_all.bind_layers(ENIP_SendUnitData_Item, ENIP_ConnectionData, type_id=0x00b1) #Table 2-6.3 Item ID Numbers, data, Connected Transport packet

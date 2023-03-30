@@ -65,7 +65,7 @@ icmpv6_code = {
         2: "unrecognized IPv6 option encountered"
     },
 }
-# 端口字典
+# arp dictionary
 ports = {
     80: "HTTP",
     1900: "SSDP",
@@ -77,7 +77,7 @@ ports = {
 }
 
 # delete
-# HTTPS解析
+# HTTPS dictionary
 content_type = {
     '14': "Change Cipher Spec",
     '15': "Alert Message",
@@ -86,10 +86,10 @@ content_type = {
 }
 version = {'00': "SSLv3", '01': "TLSv1.0", '02': "TLSv1.1", '03': "TLSv1.2"}
 
-# 停止抓包的线程
+# Thread for stopping the capturing
 stop_capturing_thread = Event()
 
-# 数据包背景颜色字典
+# background color for the rolling display of a certain protocol
 color_dict = {
     "TCP": "#e7e6ff",  ###
     "TCPv6": "#e7e6ff",
@@ -129,7 +129,7 @@ color_dict = {
 }
 
 class Core():
-    """ 抓包后台类 """
+    """ main class for package capturing """
     # the id of the captured packets starts at 1
     packet_id = 1
     # start flag
@@ -142,7 +142,7 @@ class Core():
     save_flag = False
     # window main
     main_window = None
-    # 开始时间戳
+    # start time for capturing
     start_timestamp = 0.0
     # path for temporary file
     temp_file = None
@@ -151,8 +151,8 @@ class Core():
 
     def __init__(self, mainwindow):
         """
-        初始化, 若不设置netcard则为捕捉所有网卡的数据包
-        :parma mainwindow: 传入主窗口
+        Initialization, if netcard is not set, it will capture the data packets of all network cards
+        :parma mainwindow: mainwindow for passing parameters
         """
         self.main_window = mainwindow
         temp = NamedTemporaryFile(
@@ -163,17 +163,17 @@ class Core():
 
     def process_packet(self, packet, writer):
         """
-        处理抓到的数据包
-        :parma packet: 需要处理分类的包
+        Process captured packets
+        :parma packet: Packages that need to be processed for classification
         """
         try:
-            # 如果暂停，则不对列表进行更新操作
+            # If paused, the list will not be updated
             if not self.pause_flag and packet.name == "Ethernet":
                 protocol = None
                 if self.packet_id == 1:
                     self.start_timestamp = packet.time
                 packet_time = packet.time - self.start_timestamp
-                # 第二层
+                # go to the second layer
                 ether_type = packet.payload.name
                 version_add = ""
 
@@ -197,7 +197,7 @@ class Core():
                     if destination == "ff:ff:ff:ff:ff:ff":
                         destination = "Broadcast"
                 else:
-                    # 其他协议不处理
+                    # do not handle other protocols here
                     return
 
                 if ether_type != "ARP":
@@ -211,6 +211,8 @@ class Core():
                         protocol += version_add
                         self.counter["tcp"] += 1
 
+                        #ENIP_TCP is based on TCP and some other protocols/layers are based on ENIP_TCP
+                        #TO-DO: please simplify the way of coding using format like pkt[CIP]
                         if packet.payload.payload.haslayer(enip_tcp.ENIP_TCP):
                             protocol = packet.payload.payload.payload.name
                             if packet.payload.payload.payload.haslayer(enip_tcp.ENIP_RegisterSession):
@@ -251,12 +253,13 @@ class Core():
                     #     elif dport in ports:
                     #         protocol = ports[dport] + version_add
 
+                ### pass the information to the mainwindow
                 item = QTreeWidgetItem(self.main_window.info_tree)
-                # 根据协议类型不同设置颜色
+                # Set the color according to the protocol type
                 color = color_dict[protocol]
                 for i in range(7):
                     item.setBackground(i, QBrush(QColor(color)))
-                # 添加行内容
+                # add line content
                 item.setData(0, Qt.DisplayRole, self.packet_id)
                 item.setText(1, "%12.6f " % packet_time)
                 item.setText(2, source)
@@ -264,7 +267,7 @@ class Core():
                 item.setText(4, protocol)
                 item.setData(5, Qt.DisplayRole, len(packet))
                 item.setText(6, packet.summary())
-                # 设置右对齐，为了格式化后不影响排序
+                # Set right alignment, in order not to affect sorting after formatting
                 item.setTextAlignment(1, Qt.AlignRight)
                 self.packet_id += 1
                 if writer:
@@ -274,28 +277,30 @@ class Core():
 
     def on_click_item(self, this_id):
         """
-        处理点击列表中的项
-        :parma this_id: 包对应的packet_id，在packet_list里获取该packet
+        Handle clicks on items in the list
+        :parma this_id: The packet_id corresponding to the packet, get the packet in the packet_list
         """
         try:
             if not this_id or this_id < 1:
                 return
             previous_packet_time, packet = self.read_packet(this_id - 1)
-            # 详细信息列表, 用于添加进GUI
+            # List of details, for adding to the GUI
+            # here the first_return is for the highest level information display
+            # and the second_return is for the second level information display
+            # first_layer will be added into second_return, 'layer' here means fucntion on_click_item()'s start decomposing
             first_return = []
             second_return = []
-            # 第一层: Frame
             first_layer = []
-            # on wire的长度
+            # length of the data on wire
             packet_wirelen = "%d bytes (%d bits)" % (packet.wirelen,
                                                      packet.wirelen << 3)
-            # 实际抓到的长度
+            # actual caught length
             packet_capturedlen = "%d bytes (%d bits)" % (len(packet),
                                                          len(packet) << 3)
             frame = "Frame %d: %s on wire, %s captured" % (
                 this_id, packet_wirelen, packet_capturedlen)
             first_return.append(frame)
-            # 抓包的时间
+            # capture time
             first_layer.append(
                 "Arrival Time: %s" % time_to_formal(packet.time))
             first_layer.append("Epoch Time: %f seconds" % packet.time)
@@ -309,22 +314,24 @@ class Core():
             first_layer.append("Frame Number: %d" % this_id)
             first_layer.append("Frame Length: %s" % packet_wirelen)
             first_layer.append("Capture Length: %s" % packet_capturedlen)
-            # 添加第一层信息到二维列表中
+            # Add the first_layer of information to the two-dimensional list(second_return)
             second_return.append(first_layer)
             first_temp, second_temp = self.get_next_layer(packet)
             first_return += first_temp
             second_return += second_temp
-            # dump=True 将hexdump返回而不是打印
+            # dump=True
         except:
             pass
+        #Return the hexdump instead of printing out
         return first_return, second_return, hexdump(packet, dump=True)
 
     def get_next_layer(self, packet):
         """
-        递归处理下一层信息
-        :parma packet: 处理来自上一层packet的payload
+        Recursively process the next layer of information
+        :parma packet: Handle the payload from the previous layer packet
         """
-        # 第二层: Ethernet
+        # here the first_return is for the highest level information display
+        # and the second_return is for the second level information display
         first_return = []
         second_return = []
         next_layer = []
@@ -333,6 +340,9 @@ class Core():
             packet_class = packet.__class__
             if protocol == "NoPayload":
                 return first_return, second_return
+
+            # all the layers are listed below, since we need to go through every layer by sequence
+
             elif protocol == "Ethernet":
                 ether_src = packet[packet_class].src
                 ether_dst = packet[packet_class].dst
@@ -349,7 +359,7 @@ class Core():
                 ether_proto = ("Type: %s (%s)" %
                                (ether_type, hex(packet[packet_class].type)))
                 next_layer.append(ether_proto)
-            # 第三层: 网络层
+            # Layer 3: Network Layer
             # IPv4
             elif protocol == "IP" or protocol == "IP in ICMP":
                 protocol += "v4"
@@ -441,7 +451,7 @@ class Core():
                     "Target MAC address: %s" % packet[packet_class].hwdst)
                 next_layer.append(
                     "Target IP address: %s" % packet[packet_class].pdst)
-            # 第四层: 传输层
+            # The fourth layer: transport layer
             elif protocol == "TCP" or protocol == "TCP in ICMP":
                 src_port = packet[packet_class].sport
                 dst_port = packet[packet_class].dport
@@ -480,18 +490,11 @@ class Core():
                 payload_length = len(packet.payload)
                 if payload_length > 0:
                     next_layer.append("TCP payload: %d bytes" % payload_length)
+
             elif protocol == "ENIP_TCP":
-                encap_data=[]
-
-                encap_header=[]
-                encap_header_0=[]
-                encap_header_1=[]
-
-                com_spec_data=[]
                 enip_length=packet[packet_class].length
                 enip_session=hex(packet[packet_class].session)
                 enip_status=packet[packet_class].status
-                enip_status_str=""
                 if enip_status==0:
                     enip_status_str="success (0x0000 0000)"
                 else:
@@ -562,16 +565,14 @@ class Core():
                 next_layer.append("length: %d" % (item_1.length))
                 next_layer.append("item 1: %d" % (item_1.payload.sequence))
 
-                ###CIP
+                #CIP
                 cip_layer=item_1.payload.payload
                 next_layer.append("cip_layer: ------------------------------------------")
-                next_layer.append(cip_layer.name) #enip type_id=0x00b1
-                next_layer.append("direction: %s" % cip_layer.direction)
-                #next_layer.append("service: %s" % (cip_layer.service))
-                #next_layer.append("path: %s" % (cip_layer.path))
+                next_layer.append(cip_layer.name) # while enip type_id=0x00b1
+                #next_layer.append("direction: %s" % cip_layer.direction)
+                next_layer.append("service: %s" % hex(cip_layer.service))
+                next_layer.append("path: %s" % (cip_layer.path.name))
                 #next_layer.append("status: %d" % (cip_layer.status))
-
-
 
             elif protocol == "UDP" or protocol == "UDP in ICMP":
                 src_port = packet[packet_class].sport
@@ -608,47 +609,69 @@ class Core():
                         first_return.append("Data (%d bytes)" % length)
                         next_layer.append("Data: %s" % payload.hex())
                         next_layer.append("[Length: %d]" % length)
-            elif protocol == "ICMP" or protocol == "ICMP in ICMP":
-                transport = "Internet Control Message Protocol"
-                first_return.append(transport)
-                packet_type = packet[packet_class].type
-                temp_str = "Type: %d" % packet_type
-                if packet_type in icmptypes:
-                    temp_str += " (%s)" % icmptypes[packet_type]
-                next_layer.append(temp_str)
-                packet_code = packet[packet_class].code
-                temp_str = "Code: %d" % packet_code
-                if packet_type in icmpcodes:
-                    if packet_code in icmpcodes[packet_type]:
-                        temp_str += " (%s)" % icmpcodes[packet_type][
-                            packet_code]
-                next_layer.append(temp_str)
-                icmp_chksum = packet[packet_class].chksum
-                icmp_check = packet_class(raw(packet[packet_class])).chksum
-                next_layer.append("Checksum: %s" % hex(icmp_chksum))
-                next_layer.append("[Checksum status: " + "Correct]" if
-                                  icmp_check == icmp_chksum else "Incorrect]")
+
+                # Check if the protocol is ICMP or ICMP in ICMP
+                elif protocol == "ICMP" or protocol == "ICMP in ICMP":
+                    # Set the transport variable to the protocol name
+                    transport = "Internet Control Message Protocol"
+
+                    # Append the transport protocol name to the 'first_return' list
+                    first_return.append(transport)
+
+                    # Retrieve the ICMP packet type and add it to the 'next_layer' list
+                    packet_type = packet[packet_class].type
+                    temp_str = "Type: %d" % packet_type
+                    if packet_type in icmptypes:
+                        temp_str += " (%s)" % icmptypes[packet_type]
+                    next_layer.append(temp_str)
+
+                    # Retrieve the ICMP packet code and add it to the 'next_layer' list
+                    packet_code = packet[packet_class].code
+                    temp_str = "Code: %d" % packet_code
+                    if packet_type in icmpcodes:
+                        if packet_code in icmpcodes[packet_type]:
+                            temp_str += " (%s)" % icmpcodes[packet_type][packet_code]
+                    next_layer.append(temp_str)
+
+                    # Retrieve the ICMP packet checksum and its status, then add them to the 'next_layer' list
+                    icmp_chksum = packet[packet_class].chksum
+                    icmp_check = packet_class(raw(packet[packet_class])).chksum
+                    next_layer.append("Checksum: %s" % hex(icmp_chksum))
+                    next_layer.append("[Checksum status: " + "Correct]" if icmp_check == icmp_chksum else "Incorrect]")
+
+                # Check if the packet_type is 0, 8, or if the protocol is "ICMP in ICMP"
                 if packet_type == 0 or packet_type == 8 or protocol == "ICMP in ICMP":
+                    # Append the Identifier and its hexadecimal representation to the 'next_layer' list
                     next_layer.append(
                         "Identifier: %d (%s)" % (packet[packet_class].id,
                                                  hex(packet[packet_class].id)))
+
+                    # Append the Sequence number and its hexadecimal representation to the 'next_layer' list
                     next_layer.append("Sequence number: %d (%s)" %
                                       (packet[packet_class].seq,
                                        hex(packet[packet_class].seq)))
+
+                    # Check if there is any payload data in the packet
                     data_length = len(packet.payload)
                     if data_length > 0:
+                        # Append the data length and its hexadecimal representation to the 'next_layer' list
                         next_layer.append(
                             "Data (%d bytes): %s" %
                             (data_length, packet[packet_class].load.hex()))
+
+            # Check if the protocol starts with "ICMPv6" and it's not an "option"
             elif len(protocol) >= 6 and protocol[0:6] == "ICMPv6":
                 if protocol.lower().find("option") == -1:
+                    #Set the transport variable to the protocol name
                     transport = "Internet Control Message Protocol v6"
                     first_return.append(transport)
+                    # Retrieve the ICMPv6 packet type and add it to the 'next_layer' list
                     proto_type = packet[packet_class].type
                     temp_str = "Type: %d" % proto_type
                     if proto_type in icmp6types:
                         temp_str += " (%s)" % icmp6types[proto_type]
                     next_layer.append(temp_str)
+                    # Retrieve the ICMPv6 packet code and add it to the 'next_layer' list
                     packet_code = packet[packet_class].code
                     temp_str = "Code: %d" % packet_code
                     if proto_type in icmpv6_code:
@@ -656,6 +679,7 @@ class Core():
                             temp_str += " (%s)" % icmpv6_code[proto_type][
                                 packet_code]
                     next_layer.append(temp_str)
+                    # Retrieve the ICMPv6 packet checksum and its status, then add them to the 'next_layer' list
                     icmpv6_cksum = packet[packet_class].cksum
                     icmpv6_check = packet_class(raw(
                         packet[packet_class])).cksum
@@ -663,33 +687,44 @@ class Core():
                     next_layer.append("[Checksum status: " +
                                       "Correct]" if icmpv6_check ==
                                                     icmpv6_cksum else "Incorrect]")
+                    # Check if the proto_type is "Echo Request" or "Echo Reply"
                     if proto_type == "Echo Request" or proto_type == "Echo Reply":
+                        # Append the Identifier and its hexadecimal representation to the 'next_layer' list
                         next_layer.append("Identifier: %d (%s)" %
                                           (packet[packet_class].id,
                                            hex(packet[packet_class].id)))
+                        # Append the Sequence number and its hexadecimal representation to the 'next_layer' list
                         next_layer.append("Sequence number: %d (%s)" %
                                           (packet[packet_class].seq,
                                            hex(packet[packet_class].seq)))
+                        # Calculate the data_length by subtracting 8 from the packet's payload length (plen)
                         data_length = packet[packet_class].plen - 8
+                        # Check if there is any payload data in the packet
                         if data_length > 0:
+                            # Append the data length and its hexadecimal representation to the 'next_layer' list
                             next_layer.append(
                                 "Data (%d bytes): %s" %
                                 (data_length, packet[packet_class].load.hex()))
+                    # Check if the proto_type is "Neighbor Advertisement"
                     elif proto_type == "Neighbor Advertisement":
+                        # Set variables for "Set" and "Not set" strings
                         temp_set = "Set (1)"
                         temp_not_set = "Not set (0)"
+                        # Check the Router flag and append the appropriate string to the 'next_layer' list
                         temp_str = "Router: "
                         if packet[packet_class].R == 1:
                             temp_str += temp_set
                         else:
                             temp_str += temp_not_set
                         next_layer.append(temp_str)
+                        # Check the Solicited flag and append the appropriate string to the 'next_layer' list
                         temp_str = "Solicited: "
                         if packet[packet_class].S == 1:
                             temp_str += temp_set
                         else:
                             temp_str += temp_not_set
                         next_layer.append(temp_str)
+                        # Check the Override flag and append the appropriate string to the 'next_layer' list
                         temp_str = "Override: "
                         if packet[packet_class].O == 1:
                             temp_str += temp_set
@@ -701,63 +736,87 @@ class Core():
                         next_layer.append(
                             "Target Address: %s" % packet[packet_class].tgt)
                     elif proto_type == "Neighbor Solicitation":
+                        # Append the Reserved field value to the 'next_layer' list
                         next_layer.append(
                             "Reserved: %d" % packet[packet_class].res)
+                        # Append the Target Address to the 'next_layer' list
                         next_layer.append(
                             "Target Address: %s" % packet[packet_class].tgt)
                     elif proto_type == "Router Solicitation":
                         next_layer.append(
                             "Reserved: %d" % packet[packet_class].res)
-                    elif proto_type == "Router Advertisement":
-                        temp_set = "Set (1)"
-                        temp_not_set = "Not set (0)"
-                        next_layer.append(
-                            "Cur hop limit: %d" % packet[packet_class].chlim)
-                        temp_str = "Managed address configuration: "
-                        if packet[packet_class].M == 1:
-                            temp_str += temp_set
-                        else:
-                            temp_str += temp_not_set
-                        next_layer.append(temp_str)
-                        temp_str = "Other configuration: "
-                        if packet[packet_class].O == 1:
-                            temp_str += temp_set
-                        else:
-                            temp_str += temp_not_set
-                        next_layer.append(temp_str)
-                        temp_str = "Home Agent: "
-                        if packet[packet_class].H == 1:
-                            temp_str += temp_set
-                        else:
-                            temp_str += temp_not_set
-                        next_layer.append(temp_str)
-                        temp_str = "Preference: %d" % packet[packet_class].prf
-                        next_layer.append(temp_str)
-                        temp_str = "Proxy: "
-                        if packet[packet_class].P == 1:
-                            temp_str += temp_set
-                        else:
-                            temp_str += temp_not_set
-                        next_layer.append(temp_str)
-                        next_layer.append(
-                            "Reserved: %d" % packet[packet_class].res)
-                        next_layer.append("Router lifetime (s): %d" %
-                                          packet[packet_class].routerlifetime)
-                        next_layer.append("Reachable time (ms): %d" %
-                                          packet[packet_class].reachabletime)
-                        next_layer.append("Retrans timer (ms): %d" %
-                                          packet[packet_class].retranstimer)
+                        # Check if the proto_type is "Router Advertisement"
+                        if proto_type == "Router Advertisement":
+                            # Set variables for "Set" and "Not set" strings
+                            temp_set = "Set (1)"
+                            temp_not_set = "Not set (0)"
+
+                            # Append the Current Hop Limit to the 'next_layer' list
+                            next_layer.append("Cur hop limit: %d" % packet[packet_class].chlim)
+
+                            # Check and append Managed Address Configuration flag to the 'next_layer' list
+                            temp_str = "Managed address configuration: "
+                            if packet[packet_class].M == 1:
+                                temp_str += temp_set
+                            else:
+                                temp_str += temp_not_set
+                            next_layer.append(temp_str)
+
+                            # Check and append Other Configuration flag to the 'next_layer' list
+                            temp_str = "Other configuration: "
+                            if packet[packet_class].O == 1:
+                                temp_str += temp_set
+                            else:
+                                temp_str += temp_not_set
+                            next_layer.append(temp_str)
+
+                            # Check and append Home Agent flag to the 'next_layer' list
+                            temp_str = "Home Agent: "
+                            if packet[packet_class].H == 1:
+                                temp_str += temp_set
+                            else:
+                                temp_str += temp_not_set
+                            next_layer.append(temp_str)
+
+                            # Append the Preference value to the 'next_layer' list
+                            temp_str = "Preference: %d" % packet[packet_class].prf
+                            next_layer.append(temp_str)
+
+                            # Check and append Proxy flag to the 'next_layer' list
+                            temp_str = "Proxy: "
+                            if packet[packet_class].P == 1:
+                                temp_str += temp_set
+                            else:
+                                temp_str += temp_not_set
+                            next_layer.append(temp_str)
+
+                            # Append the Reserved field value to the 'next_layer' list
+                            next_layer.append("Reserved: %d" % packet[packet_class].res)
+
+                            # Append the Router Lifetime, Reachable Time, and Retrans Timer values to the 'next_layer' list
+                            next_layer.append("Router lifetime (s): %d" % packet[packet_class].routerlifetime)
+                            next_layer.append("Reachable time (ms): %d" % packet[packet_class].reachabletime)
+                            next_layer.append("Retrans timer (ms): %d" % packet[packet_class].retranstimer)
+
+                    # Check if the proto_type is "Destination Unreachable"
                     elif proto_type == "Destination Unreachable":
+                        # Append the Length and Unused fields to the 'next_layer' list
                         next_layer.append("Length: %d (%s)" %
                                           (packet[packet_class].length,
                                            hex(packet[packet_class].length)))
                         next_layer.append(
                             "Unused: %d" % packet[packet_class].unused)
+                    # Check if the proto_type is "Packet too big"
                     elif proto_type == "Packet too big":
+                        # Append the MTU value to the 'next_layer' list
                         next_layer.append("MTU: %d" % packet[packet_class].mtu)
+                    # Check if the proto_type is "Parameter problem"
                     elif proto_type == "Parameter problem":
+                        # Append the PTR value to the 'next_layer' list
                         next_layer.append("PTR: %d" % packet[packet_class].ptr)
+                    # Check if the proto_type is "Time exceeded"
                     elif proto_type == "Time exceeded":
+                        # Append the Length and Unused fields to the 'next_layer' list
                         next_layer.append("Length: %d (%s)" %
                                           (packet[packet_class].length,
                                            hex(packet[packet_class].length)))
@@ -828,9 +887,9 @@ class Core():
                             "Reserverd: %d" % packet[packet_class].res)
                         next_layer.append("MTU: %d" % packet_mtu)
                     else:
-                        # 不识别，直接返回
+                        # Not recognition, return directly
                         return first_return, second_return
-            # 第五层: 应用层
+            # The fifth layer: application layer
             # TLS
             else:
                 https = packet.__bytes__().hex()
@@ -848,7 +907,7 @@ class Core():
                             "Version: %s (0x%s)" % (protocol, https[2:6]))
                         length = int(https[6:10], 16)
                         next_layer.append("Length: %d" % length)
-                        # 如果有数据
+                        # if there is data
                         if length > 0:
                             this_layer_len = 10 + (length << 1)
                             next_layer.append(
@@ -868,67 +927,67 @@ class Core():
             first_return += first_temp
             second_return += second_temp
         except:
-            # 未知数据包
+            # unknown packet
             first_return.clear()
             second_return.clear()
         return first_return, second_return
 
     def flow_count(self, netcard=None):
         """
-        刷新下载速度、上传速度、发包速度和收包速度
+        Refresh download speed, upload speed, packet sending speed and packet receiving speed
         """
         if netcard and platform == 'Windows':
-            # 反转键值对
+            # reverse the key and value pair
             my_dict = dict(zip(netcards.values(), netcards.keys()))
             netcard = my_dict[netcard]
         while not stop_capturing_thread.is_set():
             recv_bytes, sent_bytes, recv_pak, sent_pak = get_formal_rate(
                 get_rate(netcard))
             if not self.pause_flag:
-                self.main_window.comNum.setText('下载速度：' + recv_bytes)
-                self.main_window.baudNum.setText('上传速度：' + sent_bytes)
-                self.main_window.getSpeed.setText('收包速度：' + recv_pak)
-                self.main_window.sendSpeed.setText('发包速度：' + sent_pak)
-        self.main_window.comNum.setText('下载速度：0 B/s')
-        self.main_window.baudNum.setText('上传速度：0 B/s')
-        self.main_window.getSpeed.setText('收包速度：0 pak/s')
-        self.main_window.sendSpeed.setText('发包速度：0 pak/s')
+                self.main_window.comNum.setText('download speed：' + recv_bytes)
+                self.main_window.baudNum.setText('upload speed：' + sent_bytes)
+                self.main_window.getSpeed.setText('Packet receiving speed：' + recv_pak)
+                self.main_window.sendSpeed.setText('Packet sending speed：' + sent_pak)
+        self.main_window.comNum.setText('download speed：0 B/s')
+        self.main_window.baudNum.setText('upload speed：0 B/s')
+        self.main_window.getSpeed.setText('Packet receiving speed：0 pak/s')
+        self.main_window.sendSpeed.setText('Packet sending speed：0 pak/s')
 
     def capture_packet(self, netcard, filters):
         """
-        抓取数据包
+        Capture packets
         """
         stop_capturing_thread.clear()
-        # 第一个参数可以传入文件对象或者文件名字
+        # could pass in The first parameter a file object or a file name
         writer = PcapWriter(self.temp_file, append=True, sync=True)
         thread = Thread(target=self.flow_count, daemon=True, args=(netcard,))
         thread.start()
-        # sniff中的store=False 表示不保存在内存中，防止内存使用过高
+        # store=False in sniff means not to save in memory to prevent excessive memory usage
         sniff(
             iface=netcard,
             prn=(lambda x: self.process_packet(x, writer)),
             filter=filters,
             stop_filter=(lambda x: stop_capturing_thread.is_set()),
             store=False)
-        # 执行完成关闭writer
+        # Execution is completed and close the writer
         writer.close()
 
     def start_capture(self, netcard=None, filters=None):
         """
-        开启新线程进行抓包
-        :parma netcard: 选择的网卡, "any"为全选
-        :parma filters: 过滤器条件
+        Start a new thread to capture packets
+        :parma netcard: network card selected, "any" means selecting all
+        :parma filters: Conditions set by the filter
         """
-        # 如果已开始抓包，则不能进行操作
+        # If the packet capture has already started, the operation cannot be performed
         if self.start_flag:
             return
-        # 如果已经停止且未保存数据包，则提示是否保存数据包
+        # Prompt whether to save the packet if it has been stopped and the packet has not been saved
         if self.stop_flag:
             if not self.save_flag and self.packet_id > 1:
                 resault = QMessageBox.question(
                     None,
-                    "提示",
-                    "是否保存已抓取的数据包？",
+                    "warning",
+                    "Whether to save captured data packets?",
                     QMessageBox.Yes,
                     QMessageBox.Cancel,
                 )
@@ -943,13 +1002,13 @@ class Core():
                 suffix=".pcap", prefix=str(int(time.time())), delete=False)
             self.temp_file = temp.name
             temp.close()
-        # 如果从暂停开始
+        # if start from pause state
         elif self.pause_flag:
-            # 继续显示抓到的包显示
+            # Continue to display the captured package display
             self.pause_flag = False
             self.start_flag = True
             return
-        # 开启新线程进行抓包
+        # Start a new thread to capture packets
         thread = Thread(
             target=self.capture_packet,
             daemon=True,
@@ -960,16 +1019,16 @@ class Core():
 
     def pause_capture(self):
         """
-        暂停抓包, 抓包函数仍在进行，只是不更新
+        Pause packet capture, the packet capture function is still in progress, but not updated
         """
         self.pause_flag = True
         self.start_flag = False
 
     def stop_capture(self):
         """
-        停止抓包，关闭线程
+        Stop capturing packets and close the thread
         """
-        # 通过设置终止线程，停止抓包
+        # Stop packet capture by setting the termination thread
         stop_capturing_thread.set()
         self.stop_flag = True
         self.pause_flag = False
@@ -977,46 +1036,46 @@ class Core():
 
     def restart_capture(self, netcard=None, filters=None):
         """
-        重新开始抓包
+        restart packet capture
         """
         self.stop_capture()
         self.start_capture(netcard, filters)
 
     def save_captured_to_pcap(self):
         """
-        将抓到的数据包保存为pcap格式的文件
+        Save the captured data packets as a file in pcap format
         """
         if self.packet_id == 1:
-            QMessageBox.warning(None, "警告", "没有可保存的数据包！")
+            QMessageBox.warning(None, "warning", "No data packs to save!")
             return
-        # 选择保存名称
+        # Select Save name
         filename, _ = QFileDialog.getSaveFileName(
             parent=None,
-            caption="保存文件",
+            caption="save document",
             directory=os.getcwd(),
             filter="All Files (*);;Pcap Files (*.pcap)",
         )
         if filename == "":
-            QMessageBox.warning(None, "警告", "保存失败！")
+            QMessageBox.warning(None, "warning", "Save failed!")
             return
-        # 如果没有设置后缀名（保险起见，默认是有后缀的）
+        # If no suffix name is set (to be on the safe side, there is a suffix by default)
         if filename.find(".pcap") == -1:
-            # 默认文件格式为 pcap
+            # The default file format is pcap
             filename = filename + ".pcap"
         shutil.copy(self.temp_file, filename)
         os.chmod(filename, 0o0400 | 0o0200 | 0o0040 | 0o0004)
-        QMessageBox.information(None, "提示", "保存成功！")
+        QMessageBox.information(None, "prompt", "Saved successfully!")
         self.save_flag = True
 
     def open_pcap_file(self):
         """
-        打开pcap格式的文件
+        Open a file in pcap format
         """
         if self.stop_flag and not self.save_flag:
             reply = QMessageBox.question(
                 None,
-                "提示",
-                "是否保存已抓取的数据包？",
+                "warning",
+                "Do you want to save captured packets?",
                 QMessageBox.Yes,
                 QMessageBox.Cancel,
             )
@@ -1024,7 +1083,7 @@ class Core():
                 self.save_captured_to_pcap()
         filename, _ = QFileDialog.getOpenFileName(
             parent=None,
-            caption="打开文件",
+            caption="open a file",
             directory=os.getcwd(),
             filter="All Files (*);;Pcap Files (*.pcap)",
         )
@@ -1033,9 +1092,9 @@ class Core():
         self.main_window.info_tree.clear()
         self.main_window.treeWidget.clear()
         self.main_window.set_hex_text("")
-        # 如果没有设置后缀名（保险起见，默认是有后缀的）
+        # If no suffix name is set (to be on the safe side, there is a suffix by default)
         if filename.find(".pcap") == -1:
-            # 默认文件格式为 pcap
+            # The default file format is pcap
             filename = filename + ".pcap"
         self.packet_id = 1
         self.main_window.info_tree.setUpdatesEnabled(False)
@@ -1050,18 +1109,18 @@ class Core():
 
     def clean_out(self):
         '''
-        清除临时文件
+        clear temporary files
         '''
         try:
             os.remove(self.temp_file)
         except PermissionError:
             pass
-        # 将字典中的值初始化为0
+        # Initialize the values ​​in the dictionary to 0
         self.counter = {}.fromkeys(list(self.counter.keys()), 0)
 
     def get_transport_count(self):
         """
-        获取传输层数据包的数量
+        Get the number of transport layer packets
         """
         the_keys = ['tcp', 'udp', 'icmp', 'arp']
         counter_copy = self.counter.copy()
@@ -1073,7 +1132,7 @@ class Core():
 
     def get_network_count(self):
         """
-        获取网络层数据包的数量
+        Get the number of network layer packets
         """
         the_keys = ['ipv4', 'ipv6']
         counter_copy = self.counter.copy()
@@ -1085,15 +1144,15 @@ class Core():
 
     def read_packet(self, location):
         '''
-        读取硬盘中的pcap数据
-        :parma location: 数据包位置
-        :return: 返回参数列表[上一个数据包的时间，数据包]
+        Read the pcap data in the hard disk
+        :parma location: packet position
+        :return: return parameter list [time of last packet, packet]
         '''
-        # 数据包时间是否为纳秒级
+        # Whether the packet time is in nanoseconds
         nano = False
-        # 打开文件
+        # open a file
         f = open(self.temp_file, "rb")
-        # 获取Pcap格式 magic
+        # Get Pcap format magic
         head = f.read(24)
         magic = head[:4]
         linktype = head[20:]
@@ -1110,7 +1169,7 @@ class Core():
             endian = "<"
             nano = True
         else:
-            # 不是pcap文件，弹出错误
+            # Not a pcap file, an error pops up
 
             f.close()
             return
@@ -1118,7 +1177,7 @@ class Core():
         try:
             LLcls = conf.l2types[linktype]
         except KeyError:
-            # 未知 LinkType
+            # unknown LinkType
             LLcls = conf.raw_layer
         sec, usec, caplen = [0, 0, 0]
         for _ in range(location):
@@ -1128,8 +1187,8 @@ class Core():
                 return None
             sec, usec, caplen = struct.unpack(endian + "III", packet_head[:12])
             # f.seek(offset=?, whence=?)
-            # :parma offset: 偏移量
-            # :parma whence: 开始的位置 0从头开始 1从当前位置 2从文件末尾
+            # :parma offset: offset
+            # :parma whence: Starting position: 0 from the beginning 1 from the current position 2 from the end of the file
             f.seek(caplen, 1)
         previous_time = sec + (0.000000001 if nano else 0.000001) * usec
         packet_head = f.read(16)
