@@ -357,8 +357,8 @@ class CIP(scapy_all.Packet):
         0x0d: "Apply_attributes",
         0x0e: "Get_Attribute_Single",
         0x10: "Set_Attribute_Single",
-        0x4b: "Execute_PCCC_Service",  # PCCC = Programmable Controller Communication Commands
-        0x4c: "Read_Tag_Service",
+        0x4b: "Execute_PCCC_Service",   # PCCC = Programmable Controller Communication Commands
+        0x4c: "Read_Tag_Service",   #which is Unknown in WireShark
         0x4d: "Write_Tag_Service",
         0x4e: "Read_Modify_Write_Tag_Service",
         0x4f: "Read_Other_Tag_Service",  # ???
@@ -368,7 +368,7 @@ class CIP(scapy_all.Packet):
     }
 
     fields_desc = [
-        scapy_all.BitEnumField("direction", None, 1, {0: "request", 1: "response"}),
+        scapy_all.BitEnumField("direction", 0, 1, {0: "request", 1: "response"}),
         utils.XBitEnumField("service", 0, 7, SERVICE_CODES),
         scapy_all.PacketListField("path", [], CIP_Path,
                                   count_from=lambda p: 1 if p.direction == 0 else 0),

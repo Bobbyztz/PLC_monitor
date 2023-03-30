@@ -565,9 +565,9 @@ class Core():
                 ###CIP
                 cip_layer=item_1.payload.payload
                 next_layer.append("cip_layer: ------------------------------------------")
-                next_layer.append(cip_layer.name) #enip type_id=0x00b1
-                next_layer.append("direction: %s" % cip_layer.direction)
-                #next_layer.append("service: %s" % (cip_layer.service))
+                next_layer.append(cip_layer.name) # while enip type_id=0x00b1
+                #next_layer.append("direction: %s" % cip_layer.direction)
+                next_layer.append("service: %s" % hex(cip_layer.service))
                 #next_layer.append("path: %s" % (cip_layer.path))
                 #next_layer.append("status: %d" % (cip_layer.status))
 
