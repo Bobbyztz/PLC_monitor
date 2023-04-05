@@ -340,7 +340,7 @@ class CIP(scapy_all.Packet):
     }
 
     fields_desc = [
-        scapy_all.BitEnumField("direction", None, 1, {0: "request", 1: "response"}),
+        scapy_all.BitEnumField("direction", 0, 1, {0: "request", 1: "response"}),
         utils.XBitEnumField("service", 0, 7, SERVICE_CODES),
         scapy_all.PacketListField("path", [], CIP_Path,
                                   count_from=lambda p: 1 if p.direction == 0 else 0),
