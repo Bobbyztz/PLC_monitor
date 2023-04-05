@@ -94,6 +94,8 @@ class ENIP_TCP(scapy_all.Packet):
         scapy_all.LEIntField("options", 0),
     ]
 
+    ###wierd merge
+
     def extract_padding(self, p):
         return p[:self.length], p[self.length:]
 
