@@ -1,3 +1,3 @@
 # PLC_monitor
 
-to build a web version plc traffic monitor basicly
+demo for plc traffic in python; front end & back end
